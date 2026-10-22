@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wind Map Viewer</title>
+  <meta name="description" content="Drag and drop a NetCDF wind file (e.g. ERA5) and GeoJSON polygons to explore mean wind speed maps and time series in the browser." />
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="lib/plotly.min.js"></script>
+  <script src="lib/topojson-client.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <h1>Wind Map Viewer</h1>
+    </div>
+    <div class="files">
+      <div class="file-chip" id="ncChip">
+        <span class="chip-kind">NetCDF</span>
+        <span class="chip-name" id="ncName">Drag &amp; drop a .nc file anywhere</span>
+        <label class="btn btn-ghost">Browse…<input type="file" id="ncInput" accept=".nc,.nc4,.cdf,.netcdf,.h5,.hdf5" hidden /></label>
+      </div>
+      <div class="file-chip" id="gjChip">
+        <span class="chip-kind">GeoJSON</span>
+        <span class="chip-name" id="gjName">Drop .geojson files to overlay polygon outlines</span>
+        <label class="btn btn-ghost">Browse…<input type="file" id="gjInput" accept=".geojson,.json" multiple hidden /></label>
+        <button class="btn btn-ghost" id="gjClear" hidden>Clear</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="controls" id="controls">
+    <label class="ctl">Variable
+      <select id="varSelect" disabled></select>
+    </label>
+    <label class="ctl">View mode
+      <select id="modeSelect" disabled>
+        <option value="mean">Mean</option>
+        <option value="single">Single Timestep</option>
+      </select>
+    </label>
+    <div class="ctl timestep" id="timestepCtl" hidden>
+      <span>Timestep</span>
+      <div class="stepper">
+        <button class="btn" id="tsMinus" aria-label="Previous timestep">−</button>
+        <input type="number" id="tsInput" min="1" value="1" />
+        <button class="btn" id="tsPlus" aria-label="Next timestep">+</button>
+        <span class="muted" id="tsMax">/ --</span>
+      </div>
+      <input type="range" id="tsSlider" min="1" value="1" />
+      <span class="time-label" id="tsTime"></span>
+      <button class="btn btn-primary" id="animBtn">Start Animation</button>
+      <label class="ctl inline">Speed
+        <select id="speedSelect">
+          <option value="200">5 fps</option>
+          <option value="100">10 fps</option>
+          <option value="50" selected>20 fps</option>
+          <option value="20">50 fps</option>
+        </select>
+      </label>
+    </div>
+    <div class="status" id="status" role="status"></div>
+  </section>
+
+  <main class="panels">
+    <section class="panel">
+      <div class="panel-head"><h2>Map</h2><span class="muted small">Scroll to zoom · drag to pan · click a cell for its time series</span></div>
+      <div id="map" class="plot"></div>
+      <div class="coords" id="coords">Selected: --</div>
+    </section>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Time Series</h2>
+        <div class="range">
+          Show timesteps from
+          <input type="number" id="tsFirst" min="1" value="1" />
+          to
+          <input type="number" id="tsLast" min="1" value="1" />
+        </div>
+      </div>
+      <div id="ts" class="plot"></div>
+    </section>
+  </main>
+
+  <div class="drop-overlay" id="dropOverlay" hidden>
+    <div class="drop-box">
+      <strong>Drop to load</strong>
+      <span>.nc → wind map · .geojson → polygon outlines</span>
+    </div>
+  </div>
+
+  <footer class="foot">
+    Files are processed locally in your browser and never uploaded. Supports NetCDF-3 and NetCDF-4 (HDF5) files.
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
