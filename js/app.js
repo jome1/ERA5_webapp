@@ -201,9 +201,11 @@ function shift360() {
 
 function buildGeoTraces() {
   const shift = shift360();
-  return state.geo.map((g) => {
+  const col = $("labelSelect").value;
+  const out = [];
+  for (const g of state.geo) {
     const xy = geojsonToOutlinesShifted(g, shift);
-    return {
+    out.push({
       type: "scatter",
       mode: "lines",
       x: xy.x,
@@ -213,8 +215,43 @@ function buildGeoTraces() {
       hoverinfo: "skip",
       showlegend: true,
       connectgaps: false,
-    };
-  });
+    });
+    const labelled = col ? g.features.filter((f) => f.props[col] !== undefined && f.props[col] !== null) : [];
+    if (labelled.length) {
+      out.push({
+        type: "scatter",
+        mode: "text",
+        x: labelled.map((f) => (shift && f.lon < 0 ? f.lon + 360 : f.lon)),
+        y: labelled.map((f) => f.lat),
+        text: labelled.map((f) => String(f.props[col])),
+        textfont: { color: g.color, size: 12 },
+        hoverinfo: "skip",
+        showlegend: false,
+        name: g.name + " labels",
+      });
+    }
+  }
+  return out;
+}
+
+function updateLabelSelect() {
+  const sel = $("labelSelect");
+  const prev = sel.value;
+  const cols = [];
+  for (const g of state.geo) for (const c of g.columns) if (!cols.includes(c)) cols.push(c);
+  sel.innerHTML = "";
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "None";
+  sel.appendChild(none);
+  for (const c of cols) {
+    const o = document.createElement("option");
+    o.value = c;
+    o.textContent = c;
+    sel.appendChild(o);
+  }
+  sel.value = cols.includes(prev) ? prev : "";
+  sel.disabled = cols.length === 0;
 }
 
 function geojsonToOutlinesShifted(g, shift) {
@@ -655,11 +692,12 @@ async function loadGeoJSON(file) {
   try {
     const text = await file.text();
     const gj = JSON.parse(text);
-    const { outlines, nPolygons, warnings } = geojsonToOutlines(gj);
+    const { outlines, nPolygons, warnings, features, columns } = geojsonToOutlines(gj);
     if (!outlines.x.length) throw new Error("No Polygon / MultiPolygon geometries found.");
     const color = GEO_COLORS[state.geo.length % GEO_COLORS.length];
-    state.geo.push({ name: file.name, outlines, color, nPolys: nPolygons });
+    state.geo.push({ name: file.name, outlines, color, nPolys: nPolygons, features, columns });
     updateGeoChip();
+    updateLabelSelect();
     await drawMap({ resetView: !state.field });
     setStatus(`Added ${nPolygons} polygon${nPolygons === 1 ? "" : "s"} from ${file.name}${warnings.length ? " · " + warnings.join(" ") : ""}`, warnings.length ? "error" : "ok");
   } catch (e) {
@@ -733,9 +771,12 @@ function wire() {
   $("gjClear").addEventListener("click", async () => {
     state.geo = [];
     updateGeoChip();
+    updateLabelSelect();
     await drawMap();
     setStatus("Polygon overlays cleared");
   });
+
+  $("labelSelect").addEventListener("change", () => drawMap());
 
   $("varSelect").addEventListener("change", async (e) => {
     stopAnimation();

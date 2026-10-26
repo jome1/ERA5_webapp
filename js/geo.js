@@ -9,6 +9,7 @@ export function geojsonToOutlines(gj) {
   const x = [];
   const y = [];
   const warnings = [];
+  const features = [];
   let nPolygons = 0;
   let nOther = 0;
 
@@ -59,8 +60,17 @@ export function geojsonToOutlines(gj) {
   const walk = (obj) => {
     if (!obj) return;
     if (obj.type === "FeatureCollection") for (const f of obj.features || []) walk(f);
-    else if (obj.type === "Feature") geom(obj.geometry);
-    else geom(obj);
+    else if (obj.type === "Feature") {
+      const start = x.length;
+      geom(obj.geometry);
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (let k = start; k < x.length; k++) {
+        if (x[k] === null) continue;
+        x0 = Math.min(x0, x[k]); x1 = Math.max(x1, x[k]);
+        y0 = Math.min(y0, y[k]); y1 = Math.max(y1, y[k]);
+      }
+      if (x1 >= x0) features.push({ props: obj.properties || {}, lon: (x0 + x1) / 2, lat: (y0 + y1) / 2 });
+    } else geom(obj);
   };
 
   if (Array.isArray(gj)) gj.forEach(walk);
@@ -79,5 +89,10 @@ export function geojsonToOutlines(gj) {
   }
   if (bad) warnings.push("Some coordinates are outside lon/lat range — the file may use a projected CRS.");
 
-  return { outlines: { x, y }, nPolygons, warnings };
+  const columns = [];
+  for (const f of features) {
+    for (const k of Object.keys(f.props)) if (!columns.includes(k)) columns.push(k);
+  }
+
+  return { outlines: { x, y }, nPolygons, warnings, features, columns };
 }
