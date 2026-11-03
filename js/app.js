@@ -11,6 +11,7 @@ import { NetCDFReader } from "../lib/netcdfjs.esm.js";
 import { openNetCDF } from "./ncreader.js";
 import { listVariables, defaultVariable, buildField, timeMean, minMax } from "./grid.js";
 import { geojsonToOutlines } from "./geo.js";
+import { openRaster } from "./raster.js";
 
 const Plotly = window.Plotly;
 const topojson = window.topojson;
@@ -32,6 +33,7 @@ const state = {
   selected: null, // {i, j}
   hover: null, // {i, j}
   geo: [], // {name, geojson, color, nPolys}
+  raster: null, // available-land raster {name, bounds, render(), view}
   world: null, // {coast: [[lon,lat],...][], borders: ...}
   animating: false,
   animTimer: null,
@@ -155,7 +157,7 @@ function mapTitle() {
 function dataBox() {
   const f = state.field;
   if (!f) {
-    const b = geoBounds();
+    const b = geoBounds(true);
     if (b) {
       const px = Math.max((b[1] - b[0]) * 0.15, 0.5);
       const py = Math.max((b[3] - b[2]) * 0.15, 0.5);
@@ -174,8 +176,9 @@ function dataBox() {
   return [lonMin - px, lonMax + px, latMin - py, latMax + py];
 }
 
-function geoBounds() {
+function geoBounds(includeRaster = false) {
   let b = null;
+  if (includeRaster && state.raster) b = state.raster.bounds.slice();
   for (const g of state.geo) {
     for (const xy of [g.outlines]) {
       for (let k = 0; k < xy.x.length; k++) {
@@ -383,10 +386,79 @@ function heatmapTrace() {
   };
 }
 
+const RASTER_CELLS = 1500; // max grid cells along the longest side of the rendered window
+
+function rasterShift() {
+  return shift360() && state.raster && state.raster.bounds[0] < 0 ? 360 : 0;
+}
+
+let rasterToken = 0;
+let rasterTimer = null;
+
+/** Re-render the raster for the current viewport so zooming in reveals finer pixels. */
+function scheduleRasterRefresh() {
+  clearTimeout(rasterTimer);
+  rasterTimer = setTimeout(refreshRaster, 250);
+}
+
+async function refreshRaster() {
+  const r = state.raster;
+  const gd = $("map");
+  if (!r || !gd._fullLayout || !gd._fullLayout.xaxis) return;
+  const [vx0, vx1] = gd._fullLayout.xaxis.range.map(Number);
+  const [vy0, vy1] = gd._fullLayout.yaxis.range.map(Number);
+  const sh = rasterShift();
+  const view = [vx0 - sh, vx1 - sh, Math.min(vy0, vy1), Math.max(vy0, vy1)];
+  const cur = r.view.win;
+  const area = (w) => Math.max(0, w[1] - w[0]) * Math.max(0, w[3] - w[2]);
+  const inside = cur[0] <= view[0] && cur[1] >= view[1] && cur[2] <= view[2] && cur[3] >= view[3];
+  const clipped = [Math.max(view[0], r.bounds[0]), Math.min(view[1], r.bounds[1]), Math.max(view[2], r.bounds[2]), Math.min(view[3], r.bounds[3])];
+  if (area(clipped) === 0) return;
+  // keep the current grid unless it is much coarser than needed or doesn't cover the view
+  const covers = cur[0] <= clipped[0] && cur[1] >= clipped[1] && cur[2] <= clipped[2] && cur[3] >= clipped[3];
+  if (covers && area(cur) <= 6 * area(clipped)) return;
+  const padX = (view[1] - view[0]) * 0.5;
+  const padY = (view[3] - view[2]) * 0.5;
+  const token = ++rasterToken;
+  try {
+    const next = await r.render([view[0] - padX, view[1] + padX, view[2] - padY, view[3] + padY], RASTER_CELLS);
+    if (token !== rasterToken || state.raster !== r || !next) return;
+    r.view = next;
+    const idx = gd.data.findIndex((t) => t.name === "available land");
+    if (idx >= 0) await Plotly.restyle("map", { x0: [next.x0 + sh], dx: [next.dx], y0: [next.y0], dy: [next.dy], z: [next.z] }, [idx]);
+  } catch (e) {
+    console.warn("Raster refresh failed", e);
+  }
+}
+
+/** Semi-transparent grey cells for available land; drawn above the heatmap, below outlines. */
+function rasterTrace() {
+  const r = state.raster.view;
+  const shift = rasterShift();
+  const grey = "rgba(128,128,128,0.5)";
+  return {
+    type: "heatmap",
+    name: "available land",
+    x0: r.x0 + shift,
+    dx: r.dx,
+    y0: r.y0,
+    dy: r.dy,
+    z: r.z,
+    zmin: 0,
+    zmax: 1,
+    colorscale: [[0, grey], [1, grey]],
+    showscale: false,
+    zsmooth: false,
+    hoverongaps: false,
+    hoverinfo: "skip",
+  };
+}
+
 async function drawMap({ resetView = false } = {}) {
   const box = dataBox();
   const traces = [];
   if (state.field) traces.push(heatmapTrace());
+  if (state.raster) traces.push(rasterTrace());
   traces.push(...worldTraces(box));
   traces.push(...buildGeoTraces());
   const layout = baseLayout(box);
@@ -425,7 +497,7 @@ function bindMapEvents() {
   let hoverPending = null;
   el.on("plotly_hover", (ev) => {
     const p = ev.points && ev.points[0];
-    if (!p || p.data.type !== "heatmap" || !state.field) return;
+    if (!p || p.data.type !== "heatmap" || p.data.name === "available land" || !state.field) return;
     const [j, i] = p.pointIndex;
     if (state.hover && state.hover.i === i && state.hover.j === j) return;
     state.hover = { i, j };
@@ -444,9 +516,12 @@ function bindMapEvents() {
     $("coords").textContent = selectedText();
     updateShapes();
   });
+  el.on("plotly_relayout", () => {
+    if (state.raster) scheduleRasterRefresh();
+  });
   el.on("plotly_click", (ev) => {
     const p = ev.points && ev.points[0];
-    if (!p || p.data.type !== "heatmap" || !state.field) return;
+    if (!p || p.data.type !== "heatmap" || p.data.name === "available land" || !state.field) return;
     const [j, i] = p.pointIndex;
     state.selected = { i, j };
     $("coords").textContent = selectedText();
@@ -707,6 +782,32 @@ async function loadGeoJSON(file) {
   }
 }
 
+async function loadRaster(file) {
+  try {
+    setStatus(`Reading raster ${file.name}…`);
+    const r = await openRaster(file);
+    r.view = await r.render(r.bounds, RASTER_CELLS, (p) => setStatus(`Reading raster ${file.name}… ${Math.round(p * 100)}%`));
+    if (!r.view || !r.view.nAvail) throw new Error("No available (non-zero, non-NoData) pixels found.");
+    state.raster = r;
+    rasterToken++;
+    updateRasterChip();
+    await drawMap({ resetView: !state.field && !state.geo.length });
+    setStatus(`Loaded raster ${file.name}${r.view.reduced ? " (zoom in for finer pixels)" : ""}`, "ok");
+  } catch (e) {
+    console.error(e);
+    setStatus(`Failed to load raster ${file.name}: ${e.message || e}`, "error");
+    alert(`Failed to load raster file:\n${e.message || e}`);
+  }
+}
+
+function updateRasterChip() {
+  const r = state.raster;
+  $("rsName").textContent = r ? r.name : "Drop a .tif raster to show available land";
+  $("rsName").title = r ? r.name : "";
+  $("rsChip").classList.toggle("loaded", !!r);
+  $("rsClear").hidden = !r;
+}
+
 function updateGeoChip() {
   const n = state.geo.length;
   const polys = state.geo.reduce((s, g) => s + g.nPolys, 0);
@@ -720,11 +821,13 @@ function routeFiles(files) {
   const list = Array.from(files || []);
   const nc = list.filter((f) => /\.(nc|nc4|cdf|netcdf|h5|hdf5)$/i.test(f.name));
   const gj = list.filter((f) => /\.(geojson|json)$/i.test(f.name));
-  const other = list.filter((f) => !nc.includes(f) && !gj.includes(f));
+  const rs = list.filter((f) => /\.(tif|tiff|gtif)$/i.test(f.name));
+  const other = list.filter((f) => !nc.includes(f) && !gj.includes(f) && !rs.includes(f));
   (async () => {
     for (const f of gj) await loadGeoJSON(f);
+    if (rs.length) await loadRaster(rs[rs.length - 1]);
     if (nc.length) await loadNetCDF(nc[nc.length - 1]);
-    if (other.length) setStatus(`Ignored ${other.map((f) => f.name).join(", ")} — use .nc or .geojson files`, "error");
+    if (other.length) setStatus(`Ignored ${other.map((f) => f.name).join(", ")} — use .nc, .geojson or .tif files`, "error");
   })();
 }
 
@@ -774,6 +877,18 @@ function wire() {
     updateLabelSelect();
     await drawMap();
     setStatus("Polygon overlays cleared");
+  });
+
+  $("rsInput").addEventListener("change", (e) => {
+    routeFiles(e.target.files);
+    e.target.value = "";
+  });
+  $("rsClear").addEventListener("click", async () => {
+    state.raster = null;
+    rasterToken++;
+    updateRasterChip();
+    await drawMap();
+    setStatus("Raster overlay cleared");
   });
 
   $("labelSelect").addEventListener("change", () => drawMap());
