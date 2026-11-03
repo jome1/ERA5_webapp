@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="css/style.css" />
   <script src="lib/plotly.min.js"></script>
   <script src="lib/topojson-client.min.js"></script>
+  <script src="lib/geotiff.min.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -26,6 +27,12 @@
         <span class="chip-name" id="gjName">Drop .geojson files to overlay polygon outlines</span>
         <label class="btn btn-ghost">Browse…<input type="file" id="gjInput" accept=".geojson,.json" multiple hidden /></label>
         <button class="btn btn-ghost" id="gjClear" hidden>Clear</button>
+      </div>
+      <div class="file-chip" id="rsChip">
+        <span class="chip-kind">Raster</span>
+        <span class="chip-name" id="rsName">Drop a .tif raster to show available land</span>
+        <label class="btn btn-ghost">Browse…<input type="file" id="rsInput" accept=".tif,.tiff,.gtif" hidden /></label>
+        <button class="btn btn-ghost" id="rsClear" hidden>Clear</button>
       </div>
     </div>
   </header>
@@ -91,7 +98,7 @@
   <div class="drop-overlay" id="dropOverlay" hidden>
     <div class="drop-box">
       <strong>Drop to load</strong>
-      <span>.nc → wind map · .geojson → polygon outlines</span>
+      <span>.nc → wind map · .geojson → polygon outlines · .tif → available land</span>
     </div>
   </div>
 
