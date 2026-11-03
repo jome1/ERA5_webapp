@@ -7,7 +7,7 @@ A browser version of `ERA5_wind_app.py`. Open the page, drag a NetCDF wind file 
 - Timestep stepping (−/+, number box, slider, ← → keys) and **animation**
 - "Show timesteps from … to …" range for the time series
 - **GeoJSON overlay** – drop one or more `.geojson` files and their polygons are drawn as **outlines only** on the same map (each file gets its own colour; *Clear* removes them)
-- **Available-land raster** – drop a GeoTIFF (`.tif`, WGS84 lon/lat, north-up); pixels that are non-zero and not NoData are drawn semi-transparent grey above the wind map and below the polygon outlines (*Clear* removes it). Large rasters are fine: the file is read lazily (not loaded into memory), internal overviews are used when present, and the visible area is re-rendered at finer detail as you zoom (max-pooled to ≤1500 cells per side, so small patches never disappear)
+- **Available-land raster** – drop a GeoTIFF (`.tif`, north-up; WGS84 lon/lat or any projected CRS, which is reprojected to WGS84 on the fly); pixels that are non-zero and not NoData are drawn semi-transparent grey above the wind map and below the polygon outlines (*Clear* removes it). Large rasters are fine: the file is read lazily (not loaded into memory), internal overviews are used when present, and the visible area is re-rendered at finer detail as you zoom (max-pooled to ≤1500 cells per side, so small patches never disappear)
 - Scroll to zoom, drag to pan, camera icon to save a PNG
 
 Everything runs locally in the browser – files are never uploaded anywhere. There is no server, so the site can be hosted for free on GitHub Pages.
