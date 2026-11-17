@@ -9,7 +9,7 @@
 import h5wasm from "../lib/hdf5_hl.js";
 import { NetCDFReader } from "../lib/netcdfjs.esm.js";
 import { openNetCDF } from "./ncreader.js";
-import { listVariables, defaultVariable, buildField, timeMean, minMax } from "./grid.js";
+import { listVariables, defaultVariable, buildField, timeMean, minMax, isWindSpeed, windSpeedRanges } from "./grid.js";
 import { geojsonToOutlines } from "./geo.js";
 import { openRaster } from "./raster.js";
 
@@ -28,6 +28,7 @@ const state = {
   mean: null,
   meanRange: [0, 1],
   stepRange: [0, 1],
+  windRanges: null,
   mode: "mean",
   step: 1, // 1-based like the original app
   selected: null, // {i, j}
@@ -699,15 +700,20 @@ async function loadNetCDF(file) {
   state.busy = true;
   stopAnimation();
   setStatus(`Reading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
+  let ds = null;
   try {
     const buf = await file.arrayBuffer();
-    const ds = await openNetCDF(buf, { h5wasm, NetCDFReader });
+    ds = await openNetCDF(buf, { h5wasm, NetCDFReader });
     const list = listVariables(ds);
     if (!list.length) throw new Error("No variable with longitude/latitude dimensions found in this file.");
+    setStatus("Calculating shared wind-speed ranges…");
+    await new Promise((r) => setTimeout(r, 0));
+    const windRanges = windSpeedRanges(ds, list);
     if (state.ds) state.ds.close();
     state.ds = ds;
     state.fileName = file.name;
     state.varList = list;
+    state.windRanges = windRanges;
     const sel = $("varSelect");
     sel.innerHTML = "";
     for (const v of list) {
@@ -725,6 +731,7 @@ async function loadNetCDF(file) {
     const f = state.field;
     setStatus(`${ds.format} · ${f.nx}×${f.ny} cells · ${f.nt} timesteps${f.extraDims.length ? ` · using first index of ${f.extraDims.join(", ")}` : ""}`, "ok");
   } catch (e) {
+    if (ds && state.ds !== ds) ds.close();
     console.error(e);
     setStatus(`Failed to load NetCDF file: ${e.message || e}`, "error");
     alert(`Failed to load NetCDF file:\n${e.message || e}`);
@@ -741,8 +748,9 @@ async function selectVariable(id, { resetView = false } = {}) {
   state.varId = id;
   state.field = field;
   state.mean = timeMean(field);
-  state.meanRange = minMax(state.mean);
-  state.stepRange = minMax(field.data);
+  const shared = isWindSpeed(state.ds, info) ? state.windRanges : null;
+  state.meanRange = shared ? shared.mean : minMax(state.mean);
+  state.stepRange = shared ? shared.step : minMax(field.data);
   state._ex = cellEdges(field.lons);
   state._ey = cellEdges(field.lats);
   state.selected = null;

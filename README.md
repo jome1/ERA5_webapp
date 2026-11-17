@@ -2,7 +2,7 @@
 
 A browser version of `ERA5_wind_app.py`. Open the page, drag a NetCDF wind file onto it, and explore:
 
-- **Mean** or **single-timestep** wind speed map (Viridis, fixed colour range per mode, like the desktop app)
+- **Mean** or **single-timestep** wind speed map (Viridis; all wind-speed variables in m/s share a colour range within each mode)
 - **Hover** a cell to see its value (blue outline), **click** a cell to select it (red outline) and plot its **time series** with the mean as a dashed red line
 - Timestep stepping (−/+, number box, slider, ← → keys) and **animation**
 - "Show timesteps from … to …" range for the time series
@@ -22,6 +22,8 @@ Everything runs locally in the browser – files are never uploaded anywhere. Th
 | GeoJSON `Polygon`, `MultiPolygon`, `GeometryCollection` | ✅ outlines incl. holes, coordinates in WGS84 lon/lat |
 
 Variable selection follows the desktop app: `wnd100m` → `wind` → `wnd` → first variable. If the file contains wind components (`u100`/`v100`, `u10`/`v10`, …), a derived wind speed `√(u² + v²)` is offered and selected by default, so raw ERA5 downloads work directly. Coordinates may be called `x/y`, `lon/lat` or `longitude/latitude`; time may be `time` or `valid_time`. Packed data (`scale_factor`/`add_offset`), `_FillValue`, descending latitudes and 0–360° longitudes are handled.
+
+For the shared colour range, wind speeds are identified by their `wind_speed` standard name, wind-speed long name, recognised variable name, or a derived u/v pair. Their units must be metres per second; missing units use the viewer's existing m/s default. Components and other variables retain their own ranges. Mean and single-timestep maps use separate shared ranges, calculated from all wind-speed fields in the current file.
 
 The whole file is read into browser memory, so files up to a few hundred MB work well; very large files (> ~1.5 GB) may exceed browser limits — subset them first (e.g. with `cdo sellonlatbox` or xarray).
 
@@ -50,6 +52,15 @@ Browsers block ES modules from `file://`, so use a tiny local web server:
 python -m http.server 8000
 # open http://localhost:8000
 ```
+
+To run the focused browser tests, open the page's developer console after it loads:
+
+```js
+(await import("./tests/grid.test.js")).runGridTests()
+await (await import("./tests/app.test.js")).runAppTests()
+```
+
+The app test replaces the currently displayed NetCDF file with temporary test data.
 
 ## Project layout
 

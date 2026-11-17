@@ -32,6 +32,21 @@ const isLat = (a) =>
   a.standard_name === "latitude" || a.axis === "Y" || /degrees?_?n(orth)?$/i.test(String(a.units || ""));
 const isTime = (a) => a.standard_name === "time" || a.axis === "T" || parseTimeUnits(a.units) !== null;
 
+function isMetresPerSecond(units) {
+  return !units || (typeof units === "string" && /^m(?:\s*\/\s*s|\s+s(?:\*\*|\^)?\s*-1)$/i.test(units.trim()));
+}
+
+function isWindSpeed(ds, info) {
+  if (!info.sources.every((name) => isMetresPerSecond(ds.vars[name].attrs.units))) return false;
+  if (info.sources.length === 2) return true;
+  const attrs = ds.vars[info.id].attrs;
+  if (/^(?:eastward|northward|x|y)_wind$/i.test(String(attrs.standard_name || "")) ||
+      /^(?:u|v)(?:\d+m?|10n|a|as)?$/i.test(info.id)) return false;
+  return String(attrs.standard_name || "").toLowerCase() === "wind_speed" ||
+    /\bwind[\s_-]*speed\b/i.test(String(attrs.long_name || "")) ||
+    /^(?:wnd|wind(?:_?speed)?|ws)(?:_?\d+m?)?$/i.test(info.id);
+}
+
 /** Classify dims of a variable. Returns null if it is not a map variable. */
 export function classify(ds, name) {
   const v = ds.vars[name];
@@ -224,3 +239,28 @@ export function minMax(arr) {
   if (lo === hi) return [lo - 0.5, hi + 0.5];
   return [lo, hi];
 }
+
+/** Shared ranges for wind speeds in this file, separately for each map mode. */
+export function windSpeedRanges(ds, variables) {
+  let meanMin = Infinity, meanMax = -Infinity;
+  let stepMin = Infinity, stepMax = -Infinity;
+  let found = false;
+  for (const info of variables) {
+    if (!isWindSpeed(ds, info)) continue;
+    found = true;
+    const field = buildField(ds, info);
+    for (const value of field.data) {
+      if (!Number.isFinite(value)) continue;
+      stepMin = Math.min(stepMin, value);
+      stepMax = Math.max(stepMax, value);
+    }
+    for (const value of timeMean(field)) {
+      if (!Number.isFinite(value)) continue;
+      meanMin = Math.min(meanMin, value);
+      meanMax = Math.max(meanMax, value);
+    }
+  }
+  return found ? { mean: minMax([meanMin, meanMax]), step: minMax([stepMin, stepMax]) } : null;
+}
+
+export { isWindSpeed };
