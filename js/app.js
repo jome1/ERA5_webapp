@@ -1,5 +1,5 @@
 /**
- * Wind Map Viewer — browser port of ERA5_wind_app.py
+ * netCDF viewer — browser port of ERA5_wind_app.py
  *
  * - Drag & drop a NetCDF file -> mean / single-timestep wind map
  * - Hover a cell -> value + blue outline; click a cell -> red outline + time series
@@ -150,9 +150,7 @@ function gridToZ(grid) {
 
 function mapTitle() {
   const f = state.field;
-  if (!f) return "";
-  if (state.mode === "mean") return `Mean Wind Speed (${f.name})`;
-  return `Wind Speed - Timestep ${state.step} (${f.name})`;
+  return f ? f.name : "";
 }
 
 function dataBox() {

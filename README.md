@@ -1,4 +1,4 @@
-# Wind Map Viewer (web)
+# netCDF viewer (web)
 
 A browser version of `ERA5_wind_app.py`. Open the page, drag a NetCDF wind file onto it, and explore:
 
@@ -34,7 +34,7 @@ Try it with the files in `samples/`.
 1. Create a new repository on GitHub (e.g. `wind-map-viewer`) and upload the contents of this folder to it (keep the folder structure; `index.html` must be at the top level).
    ```bash
    cd wind-map-viewer
-   git init && git add . && git commit -m "Wind Map Viewer"
+   git init && git add . && git commit -m "netCDF viewer"
    git branch -M main
    git remote add origin https://github.com/<your-user>/wind-map-viewer.git
    git push -u origin main

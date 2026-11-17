@@ -54,7 +54,17 @@ function assertRange(expected, label) {
   }
 }
 
+function assertTitle(expected) {
+  const actual = document.getElementById("map").layout.title.text;
+  if (actual !== `<b>${expected}</b>`) {
+    throw new Error(`Expected map title ${expected}, got ${actual}`);
+  }
+}
+
 export async function runAppTests() {
+  if (document.title !== "netCDF viewer" || document.querySelector("h1").textContent !== "netCDF viewer") {
+    throw new Error("Incorrect website name");
+  }
   const state = window.__windApp.state;
   const file = netcdf([
     { name: "wind10", units: "m/s", data: [1, 3, 5, 7] },
@@ -66,6 +76,7 @@ export async function runAppTests() {
   window.__windApp.routeFiles([file]);
   await waitFor(() => state.fileName === file.name && !state.busy, "first file");
   assertRange([3, 50], "derived speed mean");
+  assertTitle("ws10");
 
   const select = document.getElementById("varSelect");
   async function choose(id) {
@@ -75,20 +86,25 @@ export async function runAppTests() {
   }
   await choose("wind100");
   assertRange([3, 50], "other wind speed mean");
+  assertTitle("wind100");
   const mode = document.getElementById("modeSelect");
   mode.value = "single";
   mode.dispatchEvent(new Event("change"));
   await waitFor(() => document.getElementById("map").data[0].zmin === 1, "single mode");
   assertRange([1, 50], "wind speed timestep");
+  assertTitle("wind100");
   document.getElementById("tsPlus").click();
   await waitFor(() => state.step === 2, "next timestep");
   assertRange([1, 50], "next timestep");
+  assertTitle("wind100");
   await choose("temperature");
   assertRange([-40, -10], "non-wind timestep");
+  assertTitle("temperature");
   mode.value = "mean";
   mode.dispatchEvent(new Event("change"));
   await waitFor(() => document.getElementById("map").data[0].zmax === -20, "non-wind mean");
   assertRange([-30, -20], "non-wind mean");
+  assertTitle("temperature");
 
   const replacement = netcdf([{ name: "wnd", units: "m/s", data: [20, 22, 24, 26] }]);
   window.__windApp.routeFiles([replacement]);
